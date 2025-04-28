@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+import torch.nn as nn
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
 import matplotlib.patches as patches
@@ -87,23 +88,27 @@ def draw_digit_with_mouse():
     return matrix
 
 # Import the model definition to ensure compatibility with the trained model
-class DigitClassifier(torch.nn.Module):
+class DigitClassifier(nn.Module):
     def __init__(self):
         super(DigitClassifier, self).__init__()
-        # Input: 14x14 = 196 features
-        self.flatten = torch.nn.Flatten()
-        self.fc1 = torch.nn.Linear(196, 1024)
-        self.relu = torch.nn.ReLU()
-        self.fc2 = torch.nn.Linear(1024, 256)
-        self.fc3 = torch.nn.Linear(256, 10)  # 10 outputs for digits 0-9
+        self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
+        self.pool = nn.MaxPool2d(2)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
+        self.flatten = nn.Flatten()
+        
+        # Calculate output size after convolutions and pooling
+        # Input: 14x14 → Conv → 14x14 → Pool → 7x7 → Conv → 7x7 → Pool → 3x3
+        self.fc1 = nn.Linear(64 * 3 * 3, 128)
+        self.fc2 = nn.Linear(128, 10)
+        self.dropout = nn.Dropout(0.25)
         
     def forward(self, x):
+        x = self.pool(torch.relu(self.conv1(x)))
+        x = self.pool(torch.relu(self.conv2(x)))
         x = self.flatten(x)
-        x = self.fc1(x)
-        x = self.relu(x)
+        x = torch.relu(self.fc1(x))
+        x = self.dropout(x)
         x = self.fc2(x)
-        x = self.relu(x)
-        x = self.fc3(x)
         return x
 
 def predict_digit(model, matrix, device):

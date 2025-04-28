@@ -18,21 +18,26 @@ def binarize(x):
 class DigitClassifier(nn.Module):
     def __init__(self):
         super(DigitClassifier, self).__init__()
-        # Input: 14x14 = 64 features
+        self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
+        self.pool = nn.MaxPool2d(2)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
         self.flatten = nn.Flatten()
-        self.fc1 = nn.Linear(196, 1024)
-        self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(1024, 256)
-        self.fc3 = nn.Linear(256, 10)  # 10 outputs for digits 0-9
+        
+        # Calculate output size after convolutions and pooling
+        # Input: 14x14 → Conv → 14x14 → Pool → 7x7 → Conv → 7x7 → Pool → 3x3
+        self.fc1 = nn.Linear(64 * 3 * 3, 128)
+        self.fc2 = nn.Linear(128, 10)
+        self.dropout = nn.Dropout(0.25)
         
     def forward(self, x):
+        x = self.pool(torch.relu(self.conv1(x)))
+        x = self.pool(torch.relu(self.conv2(x)))
         x = self.flatten(x)
-        x = self.fc1(x)
-        x = self.relu(x)
+        x = torch.relu(self.fc1(x))
+        x = self.dropout(x)
         x = self.fc2(x)
-        x = self.relu(x)
-        x = self.fc3(x)
         return x
+    
 
 # Optimize transforms for speed
 transform = transforms.Compose([
@@ -41,11 +46,18 @@ transform = transforms.Compose([
     transforms.Lambda(binarize)
 ])
 
-# Load datasets
+transform_train = transforms.Compose([
+    transforms.RandomAffine(degrees=0, translate=(0.2, 0.2)),  # Randomly shift digits
+    transforms.Resize((14, 14), antialias=True),
+    transforms.ToTensor(),
+    transforms.Lambda(binarize)
+])
+
+# Update your dataset to use this transform
 train_dataset = torchvision.datasets.MNIST(
     root='./data', 
     train=True, 
-    transform=transform, 
+    transform=transform_train,  # Use augmented transform for training
     download=True
 )
 
@@ -80,6 +92,48 @@ test_loader = DataLoader(
 model = DigitClassifier().to(device)
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+def center_digit(matrix):
+    """Center the digit in a matrix"""
+    # Find non-zero points
+    indices = torch.nonzero(matrix)
+    if indices.size(0) == 0:  # Empty matrix
+        return matrix
+    
+    # Find bounding box
+    min_y, min_x = indices.min(dim=0)[0]
+    max_y, max_x = indices.max(dim=0)[0]
+    
+    # Calculate current center and desired center
+    current_center_y = (min_y + max_y) // 2
+    current_center_x = (min_x + max_x) // 2
+    desired_center_y = matrix.size(0) // 2
+    desired_center_x = matrix.size(1) // 2
+    
+    # Calculate shift
+    shift_y = desired_center_y - current_center_y
+    shift_x = desired_center_x - current_center_x
+    
+    # Create centered matrix
+    centered = torch.zeros_like(matrix)
+    
+    # Calculate new bounds with clipping to matrix size
+    new_min_y = max(0, min_y + shift_y)
+    new_max_y = min(matrix.size(0) - 1, max_y + shift_y)
+    new_min_x = max(0, min_x + shift_x)
+    new_max_x = min(matrix.size(1) - 1, max_x + shift_x)
+    
+    orig_min_y = max(0, min_y)
+    orig_max_y = min(matrix.size(0) - 1, max_y)
+    orig_min_x = max(0, min_x)
+    orig_max_x = min(matrix.size(1) - 1, max_x)
+    
+    height = min(new_max_y - new_min_y + 1, orig_max_y - orig_min_y + 1)
+    width = min(new_max_x - new_min_x + 1, orig_max_x - orig_min_x + 1)
+    
+    centered[new_min_y:new_min_y+height, new_min_x:new_min_x+width] = matrix[orig_min_y:orig_min_y+height, orig_min_x:orig_min_x+width]
+    
+    return centered
 
 # Training function
 def train(model, train_loader, criterion, optimizer, num_epochs=200):
@@ -149,7 +203,7 @@ def predict_digit(model, matrix):
         matrix = matrix.unsqueeze(0).unsqueeze(0)
     
     # Move to same device as model
-    matrix = matrix.to(device)
+    matrix = center_digit(matrix)
     
     with torch.no_grad():
         output = model(matrix)
