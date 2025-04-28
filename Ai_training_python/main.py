@@ -18,12 +18,12 @@ def binarize(x):
 class DigitClassifier(nn.Module):
     def __init__(self):
         super(DigitClassifier, self).__init__()
-        # Input: 9x9 = 81 features
+        # Input: 14x14 = 64 features
         self.flatten = nn.Flatten()
-        self.fc1 = nn.Linear(81, 128)
+        self.fc1 = nn.Linear(196, 1024)
         self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(128, 64)
-        self.fc3 = nn.Linear(64, 10)  # 10 outputs for digits 0-9
+        self.fc2 = nn.Linear(1024, 256)
+        self.fc3 = nn.Linear(256, 10)  # 10 outputs for digits 0-9
         
     def forward(self, x):
         x = self.flatten(x)
@@ -36,7 +36,7 @@ class DigitClassifier(nn.Module):
 
 # Optimize transforms for speed
 transform = transforms.Compose([
-    transforms.Resize((9, 9), antialias=True),  # Disable antialiasing for speed
+    transforms.Resize((14, 14), antialias=True),  # Disable antialiasing for speed
     transforms.ToTensor(),
     transforms.Lambda(binarize)
 ])
@@ -82,7 +82,7 @@ criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
 # Training function
-def train(model, train_loader, criterion, optimizer, num_epochs=2000):
+def train(model, train_loader, criterion, optimizer, num_epochs=200):
     model.train()
     for epoch in range(num_epochs):
         # Rest of the function remains the same
@@ -136,7 +136,7 @@ def evaluate(model, test_loader):
     print(f'Test Accuracy: {accuracy:.2f}%')
     return accuracy
 
-# Function to predict a digit from a 9x9 matrix
+# Function to predict a digit from a 11x11 matrix
 def predict_digit(model, matrix):
     model.eval()
     
@@ -144,8 +144,8 @@ def predict_digit(model, matrix):
     if not isinstance(matrix, torch.Tensor):
         matrix = torch.tensor(matrix, dtype=torch.float32)
     
-    # Ensure correct shape: [1, 1, 9, 9]
-    if matrix.dim() == 2:  # If just a 9x9 matrix
+    # Ensure correct shape: [1, 1, 11, 11]
+    if matrix.dim() == 2:  # If just a 11x11 matrix
         matrix = matrix.unsqueeze(0).unsqueeze(0)
     
     # Move to same device as model
@@ -166,7 +166,7 @@ if __name__ == "__main__":
     
     # Train the model
     print("Starting training...")
-    train(model, train_loader, criterion, optimizer, num_epochs=2000)
+    train(model, train_loader, criterion, optimizer, num_epochs=200)
     
     
     # Evaluate the model
@@ -178,9 +178,9 @@ if __name__ == "__main__":
     print("Model saved to digit_classifier.pth")
     
     # Example usage:
-    # Let's create a sample 9x9 matrix (this would represent a digit)
+    # Let's create a sample 11x11 matrix (this would represent a digit)
     # In a real application, you would get this matrix from your input
-    sample = torch.zeros((9, 9))
+    sample = torch.zeros((14, 14))
     # Draw a simple pattern (e.g., for digit 1)
     sample[2:7, 4] = 1
     

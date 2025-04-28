@@ -1,17 +1,101 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.widgets import Button
+import matplotlib.patches as patches
 
-# Import the model definition to ensure compatibility
+def draw_digit_with_mouse():
+    """Let the user draw a digit with the mouse on a 14x14 grid"""
+    # Create a new figure with specified size
+    fig, ax = plt.subplots(figsize=(14, 14))
+    plt.subplots_adjust(bottom=0.2)  # Make room for buttons
+    
+    # Create empty matrix
+    matrix = torch.zeros((14, 14))
+    drawing = True
+    
+    # Set up the grid display
+    ax.set_xlim(0, 14)
+    ax.set_ylim(0, 14)
+    ax.set_xticks(range(15))
+    ax.set_yticks(range(15))
+    ax.grid(True)
+    ax.set_title("Draw a digit (click and drag to draw)")
+    
+    # Invert y-axis so 0,0 is at the top-left
+    ax.invert_yaxis()
+    
+    # Create rectangles for each cell
+    rects = {}
+    for i in range(14):
+        for j in range(14):
+            rects[(i, j)] = patches.Rectangle((j, i), 1, 1, fill=False)
+            ax.add_patch(rects[(i, j)])
+    
+    # Function to update display when matrix changes
+    def update_display():
+        for i in range(14):
+            for j in range(14):
+                rects[(i, j)].set_facecolor('black' if matrix[i, j] > 0 else 'white')
+                rects[(i, j)].set_fill(matrix[i, j] > 0)
+        fig.canvas.draw_idle()
+    
+    # Mouse event handlers
+    def on_mouse_press(event):
+        if event.inaxes != ax or not drawing:
+            return
+        x, y = int(event.xdata), int(event.ydata)
+        if 0 <= x < 14 and 0 <= y < 14:
+            matrix[y, x] = 1
+            update_display()
+    
+    def on_mouse_move(event):
+        if event.inaxes != ax or not event.button or not drawing:
+            return
+        x, y = int(event.xdata), int(event.ydata)
+        if 0 <= x < 14 and 0 <= y < 14:
+            matrix[y, x] = 1
+            update_display()
+    
+    # Clear button callback
+    def on_clear(event):
+        nonlocal matrix
+        matrix = torch.zeros((14, 14))
+        update_display()
+    
+    # Done button callback
+    def on_done(event):
+        nonlocal drawing
+        drawing = False
+        plt.close(fig)
+    
+    # Add the Clear and Done buttons
+    ax_clear = plt.axes([0.2, 0.05, 0.2, 0.075])
+    ax_done = plt.axes([0.6, 0.05, 0.2, 0.075])
+    btn_clear = Button(ax_clear, 'Clear')
+    btn_done = Button(ax_done, 'Done')
+    btn_clear.on_clicked(on_clear)
+    btn_done.on_clicked(on_done)
+    
+    # Connect event handlers
+    fig.canvas.mpl_connect('button_press_event', on_mouse_press)
+    fig.canvas.mpl_connect('motion_notify_event', on_mouse_move)
+    
+    # Show the drawing interface
+    plt.show()
+    
+    return matrix
+
+# Import the model definition to ensure compatibility with the trained model
 class DigitClassifier(torch.nn.Module):
     def __init__(self):
         super(DigitClassifier, self).__init__()
-        # Input: 9x9 = 81 features
+        # Input: 14x14 = 196 features
         self.flatten = torch.nn.Flatten()
-        self.fc1 = torch.nn.Linear(81, 128)
+        self.fc1 = torch.nn.Linear(196, 1024)
         self.relu = torch.nn.ReLU()
-        self.fc2 = torch.nn.Linear(128, 64)
-        self.fc3 = torch.nn.Linear(64, 10)  # 10 outputs for digits 0-9
+        self.fc2 = torch.nn.Linear(1024, 256)
+        self.fc3 = torch.nn.Linear(256, 10)  # 10 outputs for digits 0-9
         
     def forward(self, x):
         x = self.flatten(x)
@@ -23,15 +107,15 @@ class DigitClassifier(torch.nn.Module):
         return x
 
 def predict_digit(model, matrix, device):
-    """Predict a digit from a 9x9 matrix"""
+    """Predict a digit from a 14x14 matrix"""
     model.eval()
     
     # Convert to tensor if not already
     if not isinstance(matrix, torch.Tensor):
         matrix = torch.tensor(matrix, dtype=torch.float32)
     
-    # Ensure correct shape: [1, 1, 9, 9]
-    if matrix.dim() == 2:  # If just a 9x9 matrix
+    # Ensure correct shape: [1, 1, 14, 14]
+    if matrix.dim() == 2:  # If just a 14x14 matrix
         matrix = matrix.unsqueeze(0).unsqueeze(0)
     
     # Move to same device as model
@@ -45,113 +129,99 @@ def predict_digit(model, matrix, device):
 
 def display_matrix(matrix):
     """Display a matrix as an image"""
-    plt.figure(figsize=(5, 5))
+    plt.figure(figsize=(8, 8))
     plt.imshow(matrix, cmap='binary')
     plt.grid(True)
-    plt.title("9x9 Matrix Input")
+    plt.title("14x14 Matrix Input")
     plt.show()
 
 def create_sample_matrices():
     """Create sample matrices for digits 0-9"""
-    samples = []
+    random_samples = []
     
-    # Digit 0
-    zero = torch.zeros((9, 9))
-    zero[1:3, 3:6] = 1
-    zero[3:6, 2:3] = 1
-    zero[3:6, 6:7] = 1
-    zero[6:8, 3:6] = 1
-    samples.append(zero)
+    # Random digit 0 - slightly off-center
+    zero = torch.zeros((14, 14))
+    zero[2:5, 4:10] = 1
+    zero[4:10, 3:5] = 1
+    zero[4:10, 9:11] = 1
+    zero[9:12, 4:10] = 1
+    random_samples.append((zero, 0))
     
-    # Digit 1
-    one = torch.zeros((9, 9))
-    one[1:7, 4:5] = 1
-    samples.append(one)
+    # Random digit 1 - thick
+    one = torch.zeros((14, 14))
+    one[2:12, 6:8] = 1
+    one[10:12, 5:6] = 1
+    random_samples.append((one, 1))
     
-    # Digit 2
-    two = torch.zeros((9, 9))
-    two[1:3, 2:7] = 1
-    two[3:5, 5:7] = 1
-    two[4:6, 3:5] = 1
-    two[6:8, 2:7] = 1
-    samples.append(two)
+    # Random digit 2 - stylized
+    two = torch.zeros((14, 14))
+    two[2:5, 4:10] = 1
+    two[4:7, 8:11] = 1
+    two[6:9, 6:9] = 1
+    two[8:11, 3:6] = 1
+    two[10:12, 3:11] = 1
+    random_samples.append((two, 2))
     
-    # Digit 3
-    three = torch.zeros((9, 9))
-    three[1:3, 2:7] = 1
-    three[3:5, 5:7] = 1
-    three[5:6, 3:6] = 1
-    three[6:8, 2:7] = 1
-    samples.append(three)
+    # Random digit 3 - narrow
+    three = torch.zeros((14, 14))
+    three[2:4, 4:10] = 1
+    three[4:7, 8:10] = 1
+    three[6:8, 5:9] = 1
+    three[8:10, 8:10] = 1
+    three[10:12, 4:10] = 1
+    random_samples.append((three, 3))
     
-    # Digit 4
-    four = torch.zeros((9, 9))
-    four[1:5, 2:3] = 1
-    four[3:5, 3:6] = 1
-    four[1:8, 6:7] = 1
-    samples.append(four)
+    # Random digit 4 - sharp angles
+    four = torch.zeros((14, 14))
+    four[2:11, 8:10] = 1
+    four[6:8, 4:9] = 1
+    four[2:7, 4:6] = 1
+    random_samples.append((four, 4))
     
-    # Digit 5
-    five = torch.zeros((9, 9))
-    five[1:3, 2:7] = 1
-    five[3:5, 2:4] = 1
-    five[4:6, 3:7] = 1
-    five[6:8, 2:6] = 1
-    samples.append(five)
+    # Random digit 5 - angular
+    five = torch.zeros((14, 14))
+    five[2:4, 3:11] = 1
+    five[4:7, 3:5] = 1
+    five[6:8, 3:10] = 1
+    five[8:10, 8:11] = 1
+    five[10:12, 3:9] = 1
+    random_samples.append((five, 5))
     
-    # Digit 6
-    six = torch.zeros((9, 9))
-    six[1:8, 2:4] = 1
-    six[3:5, 4:7] = 1
-    six[5:8, 5:7] = 1
-    six[7:8, 3:5] = 1
-    samples.append(six)
+    # Random digit 6 - tilted
+    six = torch.zeros((14, 14))
+    six[2:11, 4:6] = 1
+    six[6:8, 5:10] = 1
+    six[8:11, 7:10] = 1
+    six[10:12, 5:8] = 1
+    random_samples.append((six, 6))
     
-    # Digit 7
-    seven = torch.zeros((9, 9))
-    seven[1:3, 2:7] = 1
-    seven[3:8, 5:7] = 1
-    samples.append(seven)
+    # Random digit 7 - serif style
+    seven = torch.zeros((14, 14))
+    seven[2:4, 3:11] = 1
+    seven[4:7, 9:11] = 1
+    seven[7:12, 7:9] = 1
+    random_samples.append((seven, 7))
     
-    # Digit 8
-    eight = torch.zeros((9, 9))
-    eight[1:3, 3:6] = 1
-    eight[3:4, 2:3] = 1
-    eight[3:4, 6:7] = 1
-    eight[4:5, 3:6] = 1
-    eight[5:6, 2:3] = 1
-    eight[5:6, 6:7] = 1
-    eight[6:8, 3:6] = 1
-    samples.append(eight)
+    # Random digit 8 - thin
+    eight = torch.zeros((14, 14))
+    eight[2:4, 5:9] = 1
+    eight[4:6, 4:5] = 1
+    eight[4:6, 9:10] = 1
+    eight[6:8, 5:9] = 1
+    eight[8:10, 4:5] = 1
+    eight[8:10, 9:10] = 1
+    eight[10:12, 5:9] = 1
+    random_samples.append((eight, 8))
     
-    # Digit 9
-    nine = torch.zeros((9, 9))
-    nine[1:4, 3:6] = 1
-    nine[2:6, 6:7] = 1
-    nine[4:6, 3:6] = 1
-    nine[6:8, 3:6] = 1
-    samples.append(nine)
+    # Random digit 9 - rotated slightly
+    nine = torch.zeros((14, 14))
+    nine[2:4, 4:10] = 1
+    nine[4:8, 3:5] = 1
+    nine[4:10, 9:11] = 1
+    nine[9:12, 4:10] = 1
+    random_samples.append((nine, 9))
     
-    return samples
-
-def create_matrix_from_input():
-    """Let the user create a 9x9 matrix by entering each row"""
-    print("Enter 9 rows of 9 values (0 or 1) separated by spaces:")
-    matrix = []
-    for i in range(9):
-        while True:
-            try:
-                row = input(f"Row {i+1}: ")
-                row_values = [int(x) for x in row.split()]
-                if len(row_values) != 9 or not all(x in [0, 1] for x in row_values):
-                    print("Please enter exactly 9 values (0 or 1) separated by spaces")
-                    continue
-                matrix.append(row_values)
-                break
-            except ValueError:
-                print("Invalid input, please use only 0s and 1s")
-    
-    return torch.tensor(matrix, dtype=torch.float32)
+    return random_samples
 
 def main():
     # Set device
@@ -172,20 +242,28 @@ def main():
     while True:
         print("\nDigit Recognition Test Program")
         print("1. Test with sample digits (0-9)")
-        print("2. Create your own 9x9 matrix")
+        print("2. Create your own 14x14 matrix")
         print("3. Exit")
         
         choice = input("Enter your choice (1-3): ")
         
         if choice == '1':
             samples = create_sample_matrices()
-            for i, sample in enumerate(samples):
-                display_matrix(sample)
-                prediction = predict_digit(model, sample, device)
+            for i, (matrix, true_label) in enumerate(samples):
+                print(f"\nTesting sample {i+1} - True digit: {true_label}")
+                display_matrix(matrix)
+                prediction = predict_digit(model, matrix, device)
                 print(f"Predicted digit: {prediction}")
                 
+                if prediction == true_label:
+                    print("✓ Correct")
+                else:
+                    print("✗ Incorrect")
+                
         elif choice == '2':
-            matrix = create_matrix_from_input()
+            print("Drawing interface will open. Click and drag to draw, then click 'Done' when finished.")
+            matrix = draw_digit_with_mouse()
+            print("Processing your drawing...")
             display_matrix(matrix)
             prediction = predict_digit(model, matrix, device)
             print(f"Predicted digit: {prediction}")
