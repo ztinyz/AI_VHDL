@@ -18,15 +18,15 @@ def binarize(x):
 class DigitClassifier(nn.Module):
     def __init__(self):
         super(DigitClassifier, self).__init__()
-        self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
+        self.conv1 = nn.Conv2d(1, 3, kernel_size=3, padding=1)
         self.pool = nn.MaxPool2d(2)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(3, 6, kernel_size=3, padding=1)
         self.flatten = nn.Flatten()
         
         # Calculate output size after convolutions and pooling
         # Input: 14x14 → Conv → 14x14 → Pool → 7x7 → Conv → 7x7 → Pool → 3x3
-        self.fc1 = nn.Linear(64 * 3 * 3, 128)
-        self.fc2 = nn.Linear(128, 10)
+        self.fc1 = nn.Linear(6 * 3 * 3, 32)
+        self.fc2 = nn.Linear(32, 10)
         self.dropout = nn.Dropout(0.25)
         
     def forward(self, x):
@@ -73,7 +73,7 @@ train_loader = DataLoader(
     train_dataset, 
     batch_size=100,          # Increased batch size if memory allows
     shuffle=True,
-    num_workers=16,           # Use multiple CPU cores for data loading
+    num_workers=8,           # Use multiple CPU cores for data loading
     pin_memory=True,         # Faster transfer to GPU
     persistent_workers=True, # Keep workers alive between iterations
     drop_last=True           # Skip incomplete final batch
