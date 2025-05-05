@@ -224,7 +224,7 @@ def create_sample_matrices():
     nine[4:8, 3:5] = 1
     nine[4:10, 9:11] = 1
     nine[9:12, 4:10] = 1
-    random_samples.append((nine, 9))
+    random_samples.append((nine, 0))
     
     return random_samples
 
