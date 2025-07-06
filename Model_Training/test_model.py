@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import torch.nn as nn
+import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
 import matplotlib.patches as patches
@@ -87,29 +88,239 @@ def draw_digit_with_mouse():
     
     return matrix
 
-# Import the model definition to ensure compatibility with the trained model
-class DigitClassifier(nn.Module):
-    def __init__(self):
-        super(DigitClassifier, self).__init__()
-        self.conv1 = nn.Conv2d(1, 3, kernel_size=3, padding=1)
+# Improved Quantized Linear Layer (from improved_training.py)
+class ImprovedQuantLinear(nn.Module):
+    def __init__(self, in_features, out_features, bits=8):
+        super(ImprovedQuantLinear, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.bits = bits
+        
+        # Initialize weights and bias as floating point for training
+        self.weight = nn.Parameter(torch.randn(out_features, in_features) * 0.1)
+        self.bias = nn.Parameter(torch.zeros(out_features))
+        
+        # Quantization range
+        self.qmin = -(2**(bits-1))
+        self.qmax = 2**(bits-1) - 1
+        
+        # Training phase flag
+        self.quantization_training = False
+        
+    def enable_quantization_training(self):
+        """Enable quantization during training"""
+        self.quantization_training = True
+        
+    def quantize_weights(self):
+        """Quantize weights to integers with better scaling"""
+        # Use a learnable scale based on weight statistics
+        weight_abs = torch.abs(self.weight)
+        scale = torch.max(weight_abs) / self.qmax
+        scale = torch.clamp(scale, min=1e-8)  # Avoid division by zero
+        
+        # Scale and quantize
+        weight_scaled = self.weight / scale
+        weight_quantized = torch.clamp(torch.round(weight_scaled * self.qmax), self.qmin, self.qmax)
+        
+        # Scale back for actual computation
+        return weight_quantized * scale / self.qmax
+    
+    def forward(self, x):
+        if self.training and self.quantization_training:
+            # During quantization training, use straight-through estimator
+            weight_q = self.quantize_weights()
+            # Straight-through: forward uses quantized, backward uses original
+            weight_ste = weight_q + (self.weight - self.weight.detach())
+            output = F.linear(x, weight_ste, self.bias)
+        elif not self.training:
+            # During inference, use quantized weights
+            weight_q = self.quantize_weights()
+            output = F.linear(x, weight_q, self.bias)
+        else:
+            # Normal training without quantization
+            output = F.linear(x, self.weight, self.bias)
+        
+        return output
+    
+    def get_quantized_weights(self):
+        """Get the actual integer weights for export"""
+        with torch.no_grad():
+            weight_abs = torch.abs(self.weight)
+            scale = torch.max(weight_abs) / self.qmax
+            scale = torch.clamp(scale, min=1e-8)
+            
+            weight_scaled = self.weight / scale
+            weight_quantized = torch.clamp(torch.round(weight_scaled * self.qmax), self.qmin, self.qmax)
+            return weight_quantized.int()
+    
+    def extra_repr(self):
+        return f'in_features={self.in_features}, out_features={self.out_features}, bits={self.bits}'
+
+# Improved model definition that matches improved_training.py
+class ImprovedDigitClassifier(nn.Module):
+    def __init__(self, use_quantized=True, bits=8):
+        super(ImprovedDigitClassifier, self).__init__()
+        
+        # Convolutional layers (keep these as regular layers)
+        self.conv1 = nn.Conv2d(1, 8, kernel_size=3, padding=1)
         self.pool = nn.MaxPool2d(2)
-        self.conv2 = nn.Conv2d(3, 6, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(8, 16, kernel_size=3, padding=1)
         self.flatten = nn.Flatten()
         
-        # Calculate output size after convolutions and pooling
-        # Input: 14x14 → Conv → 14x14 → Pool → 7x7 → Conv → 7x7 → Pool → 3x3
-        self.fc1 = nn.Linear(6 * 3 * 3, 32)
-        self.fc2 = nn.Linear(32, 10)
-        self.dropout = nn.Dropout(0.25)
+        # Calculate flattened size: 14x14 -> 7x7 -> 3x3 (after two pooling operations)
+        flattened_size = 16 * 3 * 3
+        
+        # Use quantized linear layers
+        if use_quantized:
+            self.fc1 = ImprovedQuantLinear(flattened_size, 128, bits=bits)
+            self.fc2 = ImprovedQuantLinear(128, 64, bits=bits)
+            self.fc3 = ImprovedQuantLinear(64, 10, bits=bits)
+        else:
+            self.fc1 = nn.Linear(flattened_size, 128)
+            self.fc2 = nn.Linear(128, 64)
+            self.fc3 = nn.Linear(64, 10)
+        
+        self.dropout1 = nn.Dropout(0.25)
+        self.dropout2 = nn.Dropout(0.5)
+        self.use_quantized = use_quantized
+        
+    def enable_quantization_training(self):
+        """Enable quantization training for all quantized layers"""
+        if self.use_quantized:
+            self.fc1.enable_quantization_training()
+            self.fc2.enable_quantization_training()
+            self.fc3.enable_quantization_training()
         
     def forward(self, x):
         x = self.pool(torch.relu(self.conv1(x)))
         x = self.pool(torch.relu(self.conv2(x)))
         x = self.flatten(x)
         x = torch.relu(self.fc1(x))
-        x = self.dropout(x)
-        x = self.fc2(x)
+        x = self.dropout1(x)
+        x = torch.relu(self.fc2(x))
+        x = self.dropout2(x)
+        x = self.fc3(x)
         return x
+    
+    def get_quantized_weights(self):
+        """Get all quantized weights for export"""
+        if self.use_quantized:
+            return {
+                'fc1': self.fc1.get_quantized_weights(),
+                'fc2': self.fc2.get_quantized_weights(),
+                'fc3': self.fc3.get_quantized_weights()
+            }
+        return {}
+
+# Legacy model definition for backward compatibility
+class DigitClassifier(nn.Module):
+    def __init__(self, use_quantized=True, bits=8, model_size='large'):
+        super(DigitClassifier, self).__init__()
+        
+        # Define model sizes
+        if model_size == 'small':
+            conv1_channels, conv2_channels = 3, 6
+            fc1_neurons, fc2_neurons, fc3_neurons = 32, 16, 10
+        elif model_size == 'medium':
+            conv1_channels, conv2_channels = 8, 16
+            fc1_neurons, fc2_neurons, fc3_neurons = 128, 64, 10
+        elif model_size == 'large':
+            conv1_channels, conv2_channels = 16, 32
+            fc1_neurons, fc2_neurons, fc3_neurons = 256, 128, 10
+        elif model_size == 'xlarge':
+            conv1_channels, conv2_channels = 32, 64
+            fc1_neurons, fc2_neurons, fc3_neurons = 512, 256, 10
+        else:
+            raise ValueError("model_size must be 'small', 'medium', 'large', or 'xlarge'")
+        
+        # Convolutional layers (increased channels)
+        self.conv1 = nn.Conv2d(1, conv1_channels, kernel_size=3, padding=1)
+        self.pool = nn.MaxPool2d(2)
+        self.conv2 = nn.Conv2d(conv1_channels, conv2_channels, kernel_size=3, padding=1)
+        self.flatten = nn.Flatten()
+        
+        # Calculate flattened size: 14x14 -> 7x7 -> 3x3 (after two pooling operations)
+        flattened_size = conv2_channels * 3 * 3
+        
+        # Use quantized linear layers with more neurons
+        if use_quantized:
+            self.fc1 = ImprovedQuantLinear(flattened_size, fc1_neurons, bits=bits)
+            self.fc2 = ImprovedQuantLinear(fc1_neurons, fc2_neurons, bits=bits)
+            self.fc3 = ImprovedQuantLinear(fc2_neurons, fc3_neurons, bits=bits)
+        else:
+            self.fc1 = nn.Linear(flattened_size, fc1_neurons)
+            self.fc2 = nn.Linear(fc1_neurons, fc2_neurons)
+            self.fc3 = nn.Linear(fc2_neurons, fc3_neurons)
+        
+        self.dropout1 = nn.Dropout(0.25)
+        self.dropout2 = nn.Dropout(0.5)
+        self.use_quantized = use_quantized
+        self.model_size = model_size
+        
+    def forward(self, x):
+        x = self.pool(torch.relu(self.conv1(x)))
+        x = self.pool(torch.relu(self.conv2(x)))
+        x = self.flatten(x)
+        x = torch.relu(self.fc1(x))
+        x = self.dropout1(x)
+        x = torch.relu(self.fc2(x))
+        x = self.dropout2(x)
+        x = self.fc3(x)
+        return x
+    
+    def get_quantized_weights(self):
+        """Get all quantized weights for export"""
+        quantized_weights = {}
+        if self.use_quantized:
+            quantized_weights['fc1'] = self.fc1.get_quantized_weights()
+            quantized_weights['fc2'] = self.fc2.get_quantized_weights()
+            quantized_weights['fc3'] = self.fc3.get_quantized_weights()
+        return quantized_weights
+
+def center_digit(matrix):
+    """Center the digit in a matrix"""
+    # Find non-zero points
+    indices = torch.nonzero(matrix)
+    if indices.size(0) == 0:  # Empty matrix
+        return matrix
+    
+    # Find bounding box - indices are [row, col] format
+    min_coords = indices.min(dim=0)[0]
+    max_coords = indices.max(dim=0)[0]
+    
+    min_y, min_x = min_coords[0].item(), min_coords[1].item()
+    max_y, max_x = max_coords[0].item(), max_coords[1].item()
+    
+    # Calculate current center and desired center
+    current_center_y = (min_y + max_y) // 2
+    current_center_x = (min_x + max_x) // 2
+    desired_center_y = matrix.size(0) // 2
+    desired_center_x = matrix.size(1) // 2
+    
+    # Calculate shift
+    shift_y = desired_center_y - current_center_y
+    shift_x = desired_center_x - current_center_x
+    
+    # Create centered matrix
+    centered = torch.zeros_like(matrix)
+    
+    # Calculate new bounds with clipping to matrix size
+    new_min_y = max(0, min_y + shift_y)
+    new_max_y = min(matrix.size(0) - 1, max_y + shift_y)
+    new_min_x = max(0, min_x + shift_x)
+    new_max_x = min(matrix.size(1) - 1, max_x + shift_x)
+    
+    orig_min_y = max(0, min_y)
+    orig_max_y = min(matrix.size(0) - 1, max_y)
+    orig_min_x = max(0, min_x)
+    orig_max_x = min(matrix.size(1) - 1, max_x)
+    
+    height = min(new_max_y - new_min_y + 1, orig_max_y - orig_min_y + 1)
+    width = min(new_max_x - new_min_x + 1, orig_max_x - orig_min_x + 1)
+    
+    centered[new_min_y:new_min_y+height, new_min_x:new_min_x+width] = matrix[orig_min_y:orig_min_y+height, orig_min_x:orig_min_x+width]
+    
+    return centered
 
 def predict_digit(model, matrix, device):
     """Predict a digit from a 14x14 matrix"""
@@ -119,8 +330,17 @@ def predict_digit(model, matrix, device):
     if not isinstance(matrix, torch.Tensor):
         matrix = torch.tensor(matrix, dtype=torch.float32)
     
-    # Ensure correct shape: [1, 1, 14, 14]
-    if matrix.dim() == 2:  # If just a 14x14 matrix
+    # Ensure we're working with a 2D matrix first for centering
+    if matrix.dim() == 4:  # [batch, channel, height, width]
+        matrix = matrix.squeeze(0).squeeze(0)
+    elif matrix.dim() == 3:  # [channel, height, width]
+        matrix = matrix.squeeze(0)
+    
+    # Center the digit
+    matrix = center_digit(matrix)
+    
+    # Add batch and channel dimensions: [1, 1, height, width]
+    if matrix.dim() == 2:
         matrix = matrix.unsqueeze(0).unsqueeze(0)
     
     # Move to same device as model
@@ -228,21 +448,88 @@ def create_sample_matrices():
     
     return random_samples
 
+def detect_model_size(model_path):
+    """Detect the model size by examining the saved state dict"""
+    try:
+        state_dict = torch.load(model_path, map_location='cpu')
+        
+        # Check conv2 output channels to determine model size
+        conv2_channels = state_dict['conv2.weight'].shape[0]
+        
+        if conv2_channels == 6:
+            return 'small'
+        elif conv2_channels == 16:
+            return 'medium'
+        elif conv2_channels == 32:
+            return 'large'
+        elif conv2_channels == 64:
+            return 'xlarge'
+        else:
+            print(f"Unknown model size with {conv2_channels} conv2 channels. Defaulting to 'large'")
+            return 'large'
+    except:
+        print("Could not detect model size. Defaulting to 'large'")
+        return 'large'
+
+def detect_model_type(model_path):
+    """Detect if the model is improved or legacy type"""
+    try:
+        state_dict = torch.load(model_path, map_location='cpu')
+        
+        # Check if it's an improved model (fixed architecture)
+        if 'conv2.weight' in state_dict:
+            conv2_shape = state_dict['conv2.weight'].shape
+            if conv2_shape == torch.Size([16, 8, 3, 3]):  # Fixed improved architecture
+                return 'improved'
+        
+        return 'legacy'
+    except:
+        return 'unknown'
+
 def main():
     # Set device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
     
-    # Load the model
+    # Try to load the improved model first, then fallback to legacy model
+    model = None
+    model_path = None
+    
+    # Check for improved model first
     model_path = 'digit_classifier.pth'
-    model = DigitClassifier().to(device)
+    
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
     
     try:
-        model.load_state_dict(torch.load(model_path))
-        print(f"Model loaded from {model_path}")
+        # Detect model size from saved weights
+        model_size = detect_model_size(model_path)
+        print(f"Detected model size: {model_size}")
+        
+        # Create model with detected size
+        model = DigitClassifier(use_quantized=True, bits=8, model_size=model_size).to(device)
+        
+        # Load the weights
+        model.load_state_dict(torch.load(model_path, map_location=device))
+        print(f"model loaded successfully!")
     except FileNotFoundError:
-        print(f"Error: Model file {model_path} not found. Make sure to train the model first.")
+        print(f"Error: No model files found. Please train a model first.")
+        print(f"Looking for: {model_path}")
         return
+    except Exception as e:
+        print(f"Error loading legacy model: {e}")
+        return
+            
+    except Exception as e:
+        print(f"Error loading improved model: {e}")
+        return
+    
+    if model is None:
+        print("Failed to load any model. Exiting.")
+        return
+    
+    print(f"Model loaded from: {model_path}")
+    model.eval()  # Set to evaluation mode
     
     while True:
         print("\nDigit Recognition Test Program")
