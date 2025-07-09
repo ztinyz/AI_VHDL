@@ -1,7 +1,7 @@
 Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2023 Advanced Micro Devices, Inc. All Rights Reserved.
 ---------------------------------------------------------------------------------------------------------------------------------------------
 | Tool Version : Vivado v.2023.2 (win64) Build 4029153 Fri Oct 13 20:14:34 MDT 2023
-| Date         : Mon May  5 09:43:09 2025
+| Date         : Wed Jul  9 13:20:32 2025
 | Host         : DESKTOP-OBENCRP running 64-bit major release  (build 9200)
 | Command      : report_control_sets -verbose -file vga_control_sets_placed.rpt
 | Design       : vga
@@ -23,11 +23,11 @@ Table of Contents
 +----------------------------------------------------------+-------+
 |                          Status                          | Count |
 +----------------------------------------------------------+-------+
-| Total control sets                                       |    12 |
-|    Minimum number of control sets                        |    12 |
+| Total control sets                                       |    33 |
+|    Minimum number of control sets                        |    33 |
 |    Addition due to synthesis replication                 |     0 |
 |    Addition due to physical synthesis replication        |     0 |
-| Unused register locations in slices containing registers |    60 |
+| Unused register locations in slices containing registers |    83 |
 +----------------------------------------------------------+-------+
 * Control sets can be merged at opt_design using control_set_merge or merge_equivalent_drivers
 ** Run report_qor_suggestions for automated merging and remapping suggestions
@@ -39,15 +39,15 @@ Table of Contents
 +--------------------+-------+
 |       Fanout       | Count |
 +--------------------+-------+
-| Total control sets |    12 |
+| Total control sets |    33 |
 | >= 0 to < 4        |     4 |
-| >= 4 to < 6        |     3 |
+| >= 4 to < 6        |     4 |
 | >= 6 to < 8        |     0 |
 | >= 8 to < 10       |     1 |
 | >= 10 to < 12      |     1 |
-| >= 12 to < 14      |     1 |
+| >= 12 to < 14      |     6 |
 | >= 14 to < 16      |     0 |
-| >= 16              |     2 |
+| >= 16              |    17 |
 +--------------------+-------+
 * Control sets can be remapped at either synth_design or opt_design
 
@@ -58,33 +58,54 @@ Table of Contents
 +--------------+-----------------------+------------------------+-----------------+--------------+
 | Clock Enable | Synchronous Set/Reset | Asynchronous Set/Reset | Total Registers | Total Slices |
 +--------------+-----------------------+------------------------+-----------------+--------------+
-| No           | No                    | No                     |              45 |           15 |
-| No           | No                    | Yes                    |             210 |           89 |
-| No           | Yes                   | No                     |               0 |            0 |
-| Yes          | No                    | No                     |              14 |            5 |
-| Yes          | No                    | Yes                    |              19 |            6 |
-| Yes          | Yes                   | No                     |              12 |            5 |
+| No           | No                    | No                     |             179 |           68 |
+| No           | No                    | Yes                    |             210 |           88 |
+| No           | Yes                   | No                     |              12 |            3 |
+| Yes          | No                    | No                     |             174 |           51 |
+| Yes          | No                    | Yes                    |              19 |            7 |
+| Yes          | Yes                   | No                     |            1363 |          622 |
 +--------------+-----------------------+------------------------+-----------------+--------------+
 
 
 4. Detailed Control Set Information
 -----------------------------------
 
-+----------------------+-------------------------------------+--------------------+------------------+----------------+--------------+
-|     Clock Signal     |            Enable Signal            |  Set/Reset Signal  | Slice Load Count | Bel Load Count | Bels / Slice |
-+----------------------+-------------------------------------+--------------------+------------------+----------------+--------------+
-|  clkdiv_instance/clk |                                     |                    |                1 |              1 |         1.00 |
-|  clkdiv_instance/clk |                                     | MPG_instance/reset |                1 |              1 |         1.00 |
-|  clk_IBUF_BUFG       |                                     | MPG_instance/reset |                1 |              1 |         1.00 |
-|  clk25MHz_BUFG       |                                     |                    |                2 |              2 |         1.00 |
-|  clk25MHz_BUFG       | MPG_instance/E[0]                   | led_OBUF[0]        |                1 |              4 |         4.00 |
-|  clk25MHz_BUFG       | MPG_instance/s_dff2_out_reg[3]_0[0] | led_OBUF[0]        |                1 |              4 |         4.00 |
-|  clk_IBUF_BUFG       | MPG_instance/s_en_in                |                    |                2 |              5 |         2.50 |
-|  clk25MHz_BUFG       | CoordX                              |                    |                3 |              9 |         3.00 |
-|  clk25MHz_BUFG       | TCH_reg_n_0                         | led_OBUF[0]        |                4 |             11 |         2.75 |
-|  clk25MHz_BUFG       | R[2]_i_2_n_0                        | G                  |                5 |             12 |         2.40 |
-|  clk_IBUF_BUFG       |                                     |                    |               12 |             42 |         3.50 |
-|  clk25MHz_BUFG       |                                     | led_OBUF[0]        |               87 |            208 |         2.39 |
-+----------------------+-------------------------------------+--------------------+------------------+----------------+--------------+
++----------------------+------------------------------------------------+-------------------------+------------------+----------------+--------------+
+|     Clock Signal     |                  Enable Signal                 |     Set/Reset Signal    | Slice Load Count | Bel Load Count | Bels / Slice |
++----------------------+------------------------------------------------+-------------------------+------------------+----------------+--------------+
+|  clkdiv_instance/clk |                                                |                         |                1 |              1 |         1.00 |
+|  clkdiv_instance/clk |                                                | MPG_instance/reset      |                1 |              1 |         1.00 |
+|  clk_IBUF_BUFG       |                                                | MPG_instance/reset      |                1 |              1 |         1.00 |
+|  clk25MHz_BUFG       |                                                |                         |                2 |              2 |         1.00 |
+|  clk25MHz_BUFG       | MPG_instance/s_dff2_out_reg[3]_0[0]            | led_OBUF[0]             |                2 |              4 |         2.00 |
+|  clk_IBUF_BUFG       | AI_instance/search_index                       | led_OBUF[0]             |                1 |              4 |         4.00 |
+|  clk25MHz_BUFG       | MPG_instance/E[0]                              | led_OBUF[0]             |                1 |              4 |         4.00 |
+|  clk_IBUF_BUFG       | MPG_instance/s_en_in                           |                         |                3 |              5 |         1.67 |
+|  clk25MHz_BUFG       | CoordX                                         |                         |                3 |              9 |         3.00 |
+|  clk25MHz_BUFG       | TCH_reg_n_0                                    | led_OBUF[0]             |                4 |             11 |         2.75 |
+|  clk_IBUF_BUFG       |                                                | AI_instance/s_digits[0] |                3 |             12 |         4.00 |
+|  clk_IBUF_BUFG       | AI_instance/fc1_results_reg_64_127_0_2_i_1_n_0 |                         |                3 |             12 |         4.00 |
+|  clk_IBUF_BUFG       | AI_instance/fc1_results_reg_0_63_0_2_i_1_n_0   |                         |                3 |             12 |         4.00 |
+|  clk_IBUF_BUFG       | AI_instance/predicted_digit[3]_i_1_n_0         | led_OBUF[0]             |                2 |             12 |         6.00 |
+|  clk_IBUF_BUFG       | AI_instance/fc2_results_reg_0_63_0_2_i_4_n_0   |                         |                3 |             12 |         4.00 |
+|  clk25MHz_BUFG       | R[3]_i_2_n_0                                   | G                       |                4 |             12 |         3.00 |
+|  clk_IBUF_BUFG       | AI_instance/fc3_results[2][15]_i_1_n_0         |                         |                5 |             16 |         3.20 |
+|  clk_IBUF_BUFG       | AI_instance/fc3_results[3][15]_i_1_n_0         |                         |                3 |             16 |         5.33 |
+|  clk_IBUF_BUFG       | AI_instance/fc3_results[5][15]_i_1_n_0         |                         |                5 |             16 |         3.20 |
+|  clk_IBUF_BUFG       | AI_instance/fc3_results[6][15]_i_1_n_0         |                         |                5 |             16 |         3.20 |
+|  clk_IBUF_BUFG       | AI_instance/fc3_results[7][15]_i_1_n_0         |                         |                5 |             16 |         3.20 |
+|  clk_IBUF_BUFG       | AI_instance/fc3_results[8][15]_i_1_n_0         |                         |                3 |             16 |         5.33 |
+|  clk_IBUF_BUFG       | AI_instance/fc3_results[9][15]_i_1_n_0         |                         |                5 |             16 |         3.20 |
+|  clk_IBUF_BUFG       | AI_instance/fc3_results[0][15]_i_1_n_0         |                         |                3 |             16 |         5.33 |
+|  clk_IBUF_BUFG       | AI_instance/fc3_results[4][15]_i_1_n_0         |                         |                5 |             16 |         3.20 |
+|  clk_IBUF_BUFG       | AI_instance/fc3_results[1][15]_i_1_n_0         |                         |                6 |             16 |         2.67 |
+|  clk_IBUF_BUFG       | AI_instance/input_index[7]_i_1_n_0             | led_OBUF[0]             |               18 |             19 |         1.06 |
+|  clk_IBUF_BUFG       | AI_instance/max_value                          | led_OBUF[0]             |                4 |             20 |         5.00 |
+|  clk_IBUF_BUFG       | AI_instance/accumulator[23]_i_1_n_0            | led_OBUF[0]             |               10 |             24 |         2.40 |
+|  clk_IBUF_BUFG       |                                                |                         |               65 |            176 |         2.71 |
+|  clk25MHz_BUFG       |                                                | led_OBUF[0]             |               86 |            208 |         2.42 |
+|  clk_IBUF_BUFG       | AI_instance/flattened_input[0][7]_i_1_n_0      | led_OBUF[0]             |               82 |            286 |         3.49 |
+|  clk_IBUF_BUFG       | AI_instance/compute_index_rep[6]_i_1_n_0       | led_OBUF[0]             |              501 |            986 |         1.97 |
++----------------------+------------------------------------------------+-------------------------+------------------+----------------+--------------+
 
 

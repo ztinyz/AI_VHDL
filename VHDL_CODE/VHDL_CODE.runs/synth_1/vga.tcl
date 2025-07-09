@@ -87,6 +87,8 @@ set_property ip_cache_permissions {read write} [current_project]
 OPTRACE "Creating in-memory project" END { }
 OPTRACE "Adding files" START { }
 read_vhdl -library xil_defaultlib {
+  C:/Users/bardi/Desktop/AI_VHDL/VHDL_CODE/VHDL_CODE.srcs/sources_1/new/weights.vhd
+  C:/Users/bardi/Desktop/AI_VHDL/VHDL_CODE/VHDL_CODE.srcs/sources_1/new/Ai_processing.vhd
   C:/Users/bardi/Desktop/AI_VHDL/VHDL_CODE/VHDL_CODE.srcs/sources_1/new/SSD.vhd
   C:/Users/bardi/Desktop/AI_VHDL/VHDL_CODE/VHDL_CODE.srcs/sources_1/new/clkdiv.vhd
   C:/Users/bardi/Desktop/AI_VHDL/VHDL_CODE/VHDL_CODE.srcs/sources_1/new/mono_pulse_generator.vhd

@@ -21,9 +21,9 @@
 
 library ieee;
   use ieee.std_logic_1164.all;
-
   use ieee.std_logic_unsigned.all;
   use ieee.numeric_std.all;
+  use work.weights.all;
 
 entity vga is
     Port ( 
@@ -67,6 +67,18 @@ component SSD is
   );
 end component;
 
+component Ai_processing is
+  port (
+    clk : in std_logic;
+    reset : in std_logic;
+    start : in std_logic;
+    matrice : in matrix;
+    predicted_digit : out std_logic_vector(3 downto 0);
+    confidence : out std_logic_vector(7 downto 0);
+    done : out std_logic
+  );
+end component;
+
 signal Color: std_logic_vector(11 downto 0);
 signal MPG_out: std_logic_vector(4 downto 0);
 signal reset: std_logic;
@@ -86,7 +98,13 @@ signal CoordY : integer range 0 to 13;
 signal Select_CoordX : integer range 0 to 13;
 signal Select_CoordY : integer range 0 to 13;
 
-type matrix is array(13 downto 0, 13 downto 0) of integer;
+signal Prev_Type: integer range 0 to 3;
+
+-- AI Processing signals
+signal ai_start : std_logic := '0';
+signal ai_predicted_digit : std_logic_vector(3 downto 0);
+signal ai_confidence : std_logic_vector(7 downto 0);
+signal ai_done : std_logic;
 
 signal Squares : matrix :=((0,0,0,0,0,0,0,0,0,0,0,0,0,0),
                           (0,0,0,0,0,0,0,0,0,0,0,0,0,0),
@@ -109,6 +127,15 @@ begin
 clkdiv_instance: clkdiv port map(clk_out1=>clk25MHz,clk_in1=>clk,reset=>MPG_out(0),clockfall => clock);
 MPG_instance: mono port map (clk => clk, btn => btn, enable => MPG_out);
 SSD_instance: SSD port map (clk => clk, digits => s_digits, an => an, cat => cat);
+AI_instance: Ai_processing port map (
+    clk => clk,
+    reset => reset,
+    start => ai_start,
+    matrice => Squares,
+    predicted_digit => ai_predicted_digit,
+    confidence => ai_confidence,
+    done => ai_done
+);
 
 reset <= sw(0);
 
@@ -195,6 +222,7 @@ begin
                   (0,0,0,0,0,0,0,0,0,0,0,0,0,0));
         Select_CoordY <= 0;
         Select_CoordX <= 0;
+        Prev_Type <= 0;
     elsif rising_edge(clk25MHz) then
         if MPG_out(4 downto 1) /= x"0" then
             if MPG_out(2) = '1' then
@@ -230,6 +258,33 @@ begin
     end if;
 end process;
 
+-- AI Processing control
+ai_process: process(clk)
+begin
+    if rising_edge(clk) then
+        if reset = '1' then
+            ai_start <= '0';
+        elsif sw(14) = '1' then  -- Use switch 14 to trigger AI inference
+            ai_start <= '1';
+        elsif ai_done = '1' then
+            ai_start <= '0';
+        end if;
+    end if;
+end process;
+
+-- Update display with AI prediction
+process(clk)
+begin
+    if rising_edge(clk) then
+        if ai_done = '1' then
+            -- Display predicted digit and confidence
+            s_digits <= ai_confidence & ai_predicted_digit & "0000";
+        else
+            s_digits <= x"1234";  -- Default display
+        end if;
+    end if;
+end process;
+
 led <= sw;
 
 process(clk25MHz)
@@ -248,7 +303,6 @@ begin
                     case Squares(CoordX,CoordY) is
                         when 0 => Color <= x"FFF";
                         when 1 => Color <= x"000";
-                        when 2 => Color <= x"F00";
                         when 9 => Color <= x"999";
                         when others => Color <= x"FFF";
                      end case;

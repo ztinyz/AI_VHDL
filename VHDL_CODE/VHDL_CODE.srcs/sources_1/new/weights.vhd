@@ -3,7 +3,8 @@ use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.NUMERIC_STD.ALL;
 
 package weights is
-
+    
+    type matrix is array(13 downto 0, 13 downto 0) of integer;
     -- FC1 Layer: 144 inputs -> 128 outputs
     constant FC1_INPUTS : integer := 144;
     constant FC1_OUTPUTS : integer := 128;
